@@ -10,6 +10,7 @@ Many thanks go to Robert Crittenden <rcritten@redhat.com> who both wrote the ori
 # Legal
 
 Copyright (C) 2010 Red Hat, Inc.
+
 Copyright (C) 2017 The Obscure Organization
 
 This work is [MIT Licensed](LICENSE).
