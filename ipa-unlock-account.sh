@@ -17,8 +17,9 @@ manager=${2:-Directory Manager}
 domain=$(domainname)
 d=$(tr '.' ' '<<<"$domain")
 dc=$(for x in $d; do echo -n ",dc=$x"; done)
-host=$(dig +short "_kerberos._tcp.$domain" SRV 
-    | cut -d\  -f 4 | sed -e 's/\.$//')
+host=$(dig +short "_kerberos._tcp.$domain" SRV |
+    cut -d\  -f 4 |
+    sed -e 's/\.$//')
 
 echo "Unlocking account $account for domain $domain"
 echo -n "$manager - " 
