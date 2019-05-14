@@ -7,7 +7,7 @@ set -euo pipefail
 
 timestamp=$(date --iso-8601=seconds)
 
-umask=0077
+umask 0077
 archive="/root/authfiles-$timestamp.tar.gz"
 archive_latest="/root/authfiles.tar.gz"
 
