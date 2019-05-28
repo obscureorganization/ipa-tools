@@ -85,6 +85,8 @@ function finish() {
     return \$retcode
 }
 trap finish EXIT
+trap finish INT
+trap finish HUP
 
 ls -la "$remote_dir"
 cd "$remote_dir"
