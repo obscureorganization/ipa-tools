@@ -101,12 +101,13 @@ def extract_gecos(e):
 def user_exists(e):
     args = ['/usr/bin/ipa', 'user-show', e.pw_name]
 
-    logging.debug(" ".join(args))
+    command = " ".join(args)
+    logging.debug(command)
 
     (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
     if rc != 0:
         logging.warning('Getting user "%s" failed, return code=%s:\n%s\n%s' %
-             (e.pw_name, rc, stdout, stderr))
+             (e.pw_name, rc, command, stdout, stderr))
     else:
         logging.debug('Found user %s"' % e.pw_name)
     return rc == 0
@@ -157,12 +158,13 @@ def add_users():
                 '--setattr', 'gidnumber=%d' % gid,
                 e.pw_name]
 
-        logging.debug(" ".join(args))
+        command = " ".join(args)
+        logging.debug(command)
 
         (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         if rc != 0:
-            logging.warning('Adding user "%s" failed, return code=%s:\n%s\n%s' %
-                 (e.pw_name, rc, stdout, stderr))
+            logging.warning('Adding user "%s" failed, return code=%s:\n%s\n%s\n%s' %
+                 (e.pw_name, rc, command, stdout, stderr))
         else:
             logging.info('Successfully added user "%s"' % e.pw_name)
 
@@ -209,13 +211,13 @@ def group_add_member(group, members):
                 '--users=%s' % member,
                 group]
 
-        logging.debug(" ".join(args))
+        command = " ".join(args)
+        logging.debug(command)
 
         (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
-        #(stdout, stderr, rc) = [0,0,0]
         if rc != 0:
-            logging.warning('Adding group members "%s" failed: %s' %
-                 (group, stderr))
+            logging.warning('Adding group member "%s" to  failed (return code=%s:\n%s\n%s\n%s' % 
+                 (group, member, rc, command, stdout, stderr))
         else:
             logging.info('Successfully added group "%s" member "%s"' %
                  (group, member))
@@ -238,13 +240,14 @@ def add_groups():
                 '--gid', str(gid),
                 e.gr_name]
 
-        logging.debug(" ".join(args))
+        command = " ".join(args)
+        logging.debug(command)
 
         (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         #(stdout, stderr, rc) = [0,0,0]
         if rc != 0:
-            logging.warning('Adding group "%s" failed (return code=%s:\n%s\n%s' % 
-                 (e.gr_name, stdout, stderr))
+            logging.warning('Adding group "%s" failed (return code=%s:\n%s\n%s\n%s' % 
+                 (e.gr_name, rc, command, stdout, stderr))
         else:
             logging.info('Successfully added group "%s"' % e.gr_name)
 
