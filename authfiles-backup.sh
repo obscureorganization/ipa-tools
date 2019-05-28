@@ -8,13 +8,19 @@ set -euo pipefail
 timestamp=$(date --iso-8601=seconds)
 
 umask 0077
-archive="/root/authfiles-$timestamp.tar.gz"
-archive_latest="/root/authfiles.tar.gz"
+archive="$HOME/authfiles-$timestamp.tar.gz"
+archive_latest="$HOME/authfiles.tar.gz"
 
 rm -f "$archive_latest"
 
+umask 0117
 cd /
 tar cvfz "$archive" etc/passwd etc/group etc/shadow
 ln "$archive" "$archive_latest"
-echo "Auth files backed up:"
-ls -l /root/authfiles*
+cat <<EOF
+Auth files backed up to:
+  $archive
+  $archive_latest
+All auth files stored so far:
+EOF
+ls -l "$HOME/authfiles"*

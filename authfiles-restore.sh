@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-archive_latest="/root/authfiles.tar.gz"
+archive_latest=${1:-/root/authfiles.tar.gz}
 
 cd /
 tar xvfz "$archive_latest" etc/passwd etc/group etc/shadow

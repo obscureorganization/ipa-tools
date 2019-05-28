@@ -13,9 +13,16 @@
 # MIT Licensed, see the LICENSE file for details.
 
 import pwd
+import sys
 import grp
 import spwd
+import logging
 from ipapython.ipautil import run
+
+# Thanks https://stackoverflow.com/a/34911547
+MIN_PYTHON = (2, 7)
+if sys.version_info < MIN_PYTHON:
+    sys.exit("Python %s.%s or later is required.\n" % MIN_PYTHON)
 
 # Versions of Red Hat Enterprise Linux before 7 had 500 as the first
 # available uid above the range of system users, and 100 as the first
@@ -46,11 +53,15 @@ USER_BLACKLIST = ["systemd-bus-proxy",
                   "chrony",
                   "sssd",
                   "saslauth",
-                  "nfsnobody"]
+                  "nfsnobody",
+                  "ansible",
+                  "nagios",
+                  "null",
+                  "icinga"]
 
 # If there are some groups you prefer not to add that are above
 # the MIN_GID range list those here.
-GROUP_BLACKLIST = ["fberferd",
+GROUP_BLACKLIST = ["icingacmd",
                    "blacklistedgroup"]
 
 # do not put root into IPA groups - that should be saved for local configs
@@ -59,6 +70,7 @@ GROUP_MEMBER_BLACKLIST = ["root"]
 # Should we skip unnamed users or import them?
 SKIP_UNNAMED_USERS = False
 
+users_seen = set()
 
 # format is: login, password, uid, gid, gecos, homedir, shell
 def extract_gecos(e):
@@ -69,7 +81,7 @@ def extract_gecos(e):
     # and last name is everything else.
     gecos = e.pw_gecos.split(",")
     name = gecos[0].split(None)
-    # print(name)
+    logging.debug('GECOS name: %s' % name)
 
     if len(name) > 0:
         firstname = name[0]
@@ -86,16 +98,36 @@ def extract_gecos(e):
     return (firstname, lastname, building, office, home, other)
 
 
+def exists(e):
+    args = ['/usr/bin/ipa', 'user-show', e.pw_name]
+
+    logging.debug(" ".join(args))
+
+    (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
+    if rc != 0:
+        logging.warning('Getting user "%s" failed, return code=%s:\n%s\n%s' %
+             (e.pw_name, rc, stdout, stderr))
+    else:
+        logging.debug('Found user %s"' % e.pw_name)
+    return rc == 0
+
+
 def valid_user(e):
+    if e.pw_name in users_seen:
+        logging.warning('Skipped: user "%s" has been seen already' % e.pw_name)
+        return False
     if e.pw_uid < MIN_UID:
-        print('Skipped: user "%s" has uid %s < %s' %
+        logging.warning('Skipped: user "%s" has uid %s < %s' %
              (e.pw_name, e.pw_uid, MIN_UID))
         return False
     if e.pw_name in USER_BLACKLIST:
-        print('Skipped: user "%s" is in blacklist' % e.pw_name)
+        logging.warning('Skipped: user "%s" is in blacklist' % e.pw_name)
         return False
     if SKIP_UNNAMED_USERS and e.pw_gecos == '':
-        print('Skipped: Need first and last name for user "%s"' % e.pw_name)
+        logging.warning('Skipped: Need first and last name for user "%s"' % e.pw_name)
+        return False
+    if exists(e):
+        logging.warning('Skipped: user %s already exists' % e.pw_name)
         return False
     return True
 
@@ -106,7 +138,7 @@ def add_users():
         if not valid_user(e):
             continue
             #raise SystemExit("Not valid_user, exiting")
-
+        users_seen.add(e.pw_name)
         (firstname, lastname, building, office, home, other) = extract_gecos(e)
 
         uid = e.pw_uid + UID_OFFSET
@@ -118,40 +150,39 @@ def add_users():
                 '--first', firstname,
                 '--last', lastname,
                 '--homedir', e.pw_dir,
-                '--shell', e.pw_shell, '--setattr', 'userpassword=%s' % crypt,
+                '--shell', e.pw_shell, 
+                '--setattr', 'userpassword=%s' % crypt,
                 '--setattr', 'uidnumber=%d' % uid,
                 '--setattr', 'gidnumber=%d' % gid,
                 e.pw_name]
 
-        print(" ".join(args))
+        logging.debug(" ".join(args))
 
-        (stdout, stderr, rc) = run(args, raiseonerr=False)
-        #(stdout, stderr, rc) = [0,0,0]
+        (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         if rc != 0:
-            print 'Adding user "%s" failed: %s' % (e.pw_name, stderr)
+            logging.warning('Adding user "%s" failed, return code=%s:\n%s\n%s' %
+                 (e.pw_name, rc, stdout, stderr))
         else:
-            print 'Successfully added user "%s"' % e.pw_name
+            logging.info('Successfully added user "%s"' % e.pw_name)
 
 
 def valid_group(e):
     if e.gr_gid < MIN_GID:
-        print('Skipped: group "%s" has gid %s < %s'
+        logging.warning('Skipped: group "%s" has gid %s < %s'
               % (e.gr_name, e.gr_gid, MIN_GID))
         return False
     if e.gr_name in GROUP_BLACKLIST:
-        print('Skipped: group "%s" is in blacklist' % e.gr_name)
+        logging.warning('Skipped: group "%s" is in blacklist' % e.gr_name)
         return False
     if len(e.gr_mem) == 0:
-        print('Skipped: group "%s" is empty' % e.gr_name)
+        logging.warning('Skipped: group "%s" is empty' % e.gr_name)
         return False
     if len(e.gr_mem) == 1 and e.gr_name == e.gr_mem[0]:
-        print('Skipped: group "%s" contains only itself' % e.gr_name)
+        logging.warning('Skipped: group "%s" contains only itself' % e.gr_name)
         return False
-    # Originally this script skipped unnamed users but we have
-    # users that are intentionally unnamed, so lets not do that.
-    #if e.pw_gecos == '':
-    #    print('Skipped: Need first and last name for user "%s"' % e.pw_name)
-    #    return False
+    if SKIP_UNNAMED_USERS and e.pw_gecos == '':
+        logging.warning('Skipped: Need first and last name for user "%s"' % e.pw_name)
+        return False
     return True
 
 
@@ -164,15 +195,15 @@ def group_add_member(group, members):
                 group,
                 '--users=%s' % member]
 
-        print(" ".join(args))
+        logging.debug(" ".join(args))
 
-        (stdout, stderr, rc) = run(args, raiseonerr=False)
+        (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         #(stdout, stderr, rc) = [0,0,0]
         if rc != 0:
-            print('Adding group members "%s" failed: %s' %
+            logging.warning('Adding group members "%s" failed: %s' %
                  (group, stderr))
         else:
-            print('Successfully added group "%s" member "%s"' %
+            logging.info('Successfully added group "%s" member "%s"' %
                  (group, member))
 
 
@@ -189,14 +220,15 @@ def add_groups():
                 'group-add', e.gr_name,
                 '--gid', str(gid)]
 
-        print(" ".join(args))
+        logging.debug(" ".join(args))
 
-        (stdout, stderr, rc) = run(args, raiseonerr=False)
+        (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         #(stdout, stderr, rc) = [0,0,0]
         if rc != 0:
-            print('Adding group "%s" failed: %s' % (e.gr_name, stderr))
+            logging.warning('Adding group "%s" failed (return code=%s:\n%s\n%s' % 
+                 (e.gr_name, stdout, stderr))
         else:
-            print('Successfully added group "%s"' % e.gr_name)
+            logging.info('Successfully added group "%s"' % e.gr_name)
 
         members = [member for member in e.gr_mem
                    if member not in GROUP_MEMBER_BLACKLIST
@@ -205,5 +237,10 @@ def add_groups():
             group_add_member(e.gr_name, members)
 
 
-add_users()
-add_groups()
+def main():
+    logging.basicConfig(level=logging.INFO)
+    add_users()
+    add_groups()
+
+if __name__ == '__main__':
+    main()
