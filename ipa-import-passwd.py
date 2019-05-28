@@ -168,17 +168,18 @@ def add_users():
         else:
             logging.info('Successfully added user "%s"' % e.pw_name)
 
+
 def group_exists(e):
-    args = ['/usr/bin/ipa', 'group-show', e.pw_name]
+    args = ['/usr/bin/ipa', 'group-show', e.gr_name]
 
     logging.debug(" ".join(args))
 
     (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
     if rc != 0:
-        logging.warning('Getting user "%s" failed, return code=%s:\n%s\n%s' %
-             (e.pw_name, rc, stdout, stderr))
+        logging.warning('Getting group "%s" failed, return code=%s:\n%s\n%s' %
+             (e.gr_name, rc, stdout, stderr))
     else:
-        logging.debug('Found user %s"' % e.pw_name)
+        logging.debug('Found group %s"' % e.gr_name)
     return rc == 0
 
 
@@ -216,32 +217,46 @@ def group_add_member(group, members):
 
         (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         if rc != 0:
-            logging.warning('Adding group member "%s" to  failed (return code=%s:\n%s\n%s\n%s' % 
+            logging.warning('Adding group "%s" member "%s" failed (return code=%s:\n%s\n%s\n%s' % 
                  (group, member, rc, command, stdout, stderr))
         else:
             logging.info('Successfully added group "%s" member "%s"' %
                  (group, member))
+
+def remove_group(e):
+    logging.info("About to delete group %s" % e.gr_name)
+    args = ['/usr/bin/ipa', 'group-del', e.gr_name]
+
+    command = " ".join(args)
+    logging.debug(command)
+
+    (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
+    #(stdout, stderr, rc) = [0,0,0]
+    if rc != 0:
+        logging.warning('Removing group "%s" failed (return code=%s:\n%s\n%s\n%s' % 
+             (e.gr_name, rc, command, stdout, stderr))
+    else:
+        logging.info('Successfully removed group "%s"' % e.gr_name)
 
 
 def add_groups():
     users = [user.pw_name for user in pwd.getpwall()]
     entries = grp.getgrall()
     for e in entries:
+        logging.info('Processing group %s' % e.gr_name)
         if not group_valid(e):
             continue
         if group_exists(e):
-            verb = 'group-mod'
-        else
-            verb = 'group-add'
-            #raise SystemExit("Not user_valid, exiting")
+            remove_group(e)
+        #raise SystemExit("Group is not valid, exiting")
         gid = e.gr_gid + UID_OFFSET + GID_OFFSET
 
-        args = ['/usr/bin/ipa', verb, 
+        args = ['/usr/bin/ipa', 'group-add',
                 '--gid', str(gid),
                 e.gr_name]
 
         command = " ".join(args)
-        logging.debug(command)
+        logging.info(command)
 
         (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
         #(stdout, stderr, rc) = [0,0,0]
