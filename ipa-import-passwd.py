@@ -98,7 +98,7 @@ def extract_gecos(e):
     return (firstname, lastname, building, office, home, other)
 
 
-def exists(e):
+def user_exists(e):
     args = ['/usr/bin/ipa', 'user-show', e.pw_name]
 
     logging.debug(" ".join(args))
@@ -112,7 +112,7 @@ def exists(e):
     return rc == 0
 
 
-def valid_user(e):
+def user_valid(e):
     if e.pw_name in users_seen:
         logging.warning('Skipped: user "%s" has been seen already' % e.pw_name)
         return False
@@ -126,19 +126,20 @@ def valid_user(e):
     if SKIP_UNNAMED_USERS and e.pw_gecos == '':
         logging.warning('Skipped: Need first and last name for user "%s"' % e.pw_name)
         return False
-    if exists(e):
-        logging.warning('Skipped: user %s already exists' % e.pw_name)
-        return False
     return True
 
 
 def add_users():
     entries = pwd.getpwall()
     for e in entries:
-        if not valid_user(e):
+        if not user_valid(e):
             continue
-            #raise SystemExit("Not valid_user, exiting")
-        users_seen.add(e.pw_name)
+        if user_exists(e):
+            verb = 'user-mod'
+        else:
+            verb = 'user-add'
+	
+            #raise SystemExit("Not user_valid, exiting")
         (firstname, lastname, building, office, home, other) = extract_gecos(e)
 
         uid = e.pw_uid + UID_OFFSET
@@ -146,7 +147,7 @@ def add_users():
         shadow = spwd.getspnam(e.pw_name)
         crypt = "{crypt}%s" % shadow.sp_pwd
 
-        args = ['/usr/bin/ipa', 'user-add',
+        args = ['/usr/bin/ipa', verb,
                 '--first', firstname,
                 '--last', lastname,
                 '--homedir', e.pw_dir,
@@ -165,8 +166,21 @@ def add_users():
         else:
             logging.info('Successfully added user "%s"' % e.pw_name)
 
+def group_exists(e):
+    args = ['/usr/bin/ipa', 'group-show', e.pw_name]
 
-def valid_group(e):
+    logging.debug(" ".join(args))
+
+    (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
+    if rc != 0:
+        logging.warning('Getting user "%s" failed, return code=%s:\n%s\n%s' %
+             (e.pw_name, rc, stdout, stderr))
+    else:
+        logging.debug('Found user %s"' % e.pw_name)
+    return rc == 0
+
+
+def group_valid(e):
     if e.gr_gid < MIN_GID:
         logging.warning('Skipped: group "%s" has gid %s < %s'
               % (e.gr_name, e.gr_gid, MIN_GID))
@@ -192,8 +206,8 @@ def group_add_member(group, members):
     for member in members:
         args = ['/usr/bin/ipa',
                 'group-add-member',
-                group,
-                '--users=%s' % member]
+                '--users=%s' % member,
+                group]
 
         logging.debug(" ".join(args))
 
@@ -211,14 +225,18 @@ def add_groups():
     users = [user.pw_name for user in pwd.getpwall()]
     entries = grp.getgrall()
     for e in entries:
-        if not valid_group(e):
+        if not group_valid(e):
             continue
-            #raise SystemExit("Not valid_user, exiting")
+        if group_exists(e):
+            verb = 'group-mod'
+        else
+            verb = 'group-add'
+            #raise SystemExit("Not user_valid, exiting")
         gid = e.gr_gid + UID_OFFSET + GID_OFFSET
 
-        args = ['/usr/bin/ipa',
-                'group-add', e.gr_name,
-                '--gid', str(gid)]
+        args = ['/usr/bin/ipa', verb, 
+                '--gid', str(gid),
+                e.gr_name]
 
         logging.debug(" ".join(args))
 
