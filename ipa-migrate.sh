@@ -88,6 +88,7 @@ trap finish EXIT
 trap finish INT
 trap finish HUP
 
+ipa config-mod --enable-migration=TRUE || true
 ls -la "$remote_dir"
 cd "$remote_dir"
 tar xvf "$filename"
@@ -97,7 +98,6 @@ tar xvf "$filename"
 for auth in passwd group shadow; do
     cat "etc/\$auth" >> "/etc/\$auth"
 done
-ipa config-mod --enable-migration=TRUE
 python ./ipa-import-passwd.py
 EOF
 

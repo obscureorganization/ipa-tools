@@ -109,7 +109,7 @@ def user_exists(e):
     (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
     if rc == 0:
         logging.debug('user_exists(%s): found"' % e.pw_name)
-    else if rc == 2:
+    elif rc == 2:
         logging.debug('user_exists(%s): not found' % e.pw_name)
     else:
         logging.warning(
@@ -201,7 +201,7 @@ def group_exists(e):
     (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
     if rc == 0:
         logging.debug('group_exists(%s): found' % e.gr_name)
-    else if rc == 2:
+    elif rc == 2:
         logging.debug('group_exists(%s): not found' % e.gr_name)
     else:
         logging.warning(
