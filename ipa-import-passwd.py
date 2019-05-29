@@ -70,6 +70,8 @@ GROUP_MEMBER_BLACKLIST = ["root"]
 # Should we skip unnamed users or import them?
 SKIP_UNNAMED_USERS = False
 
+RAISE_ON_ERR = False
+
 users_seen = set()
 
 # format is: login, password, uid, gid, gecos, homedir, shell
@@ -104,12 +106,15 @@ def user_exists(e):
     command = " ".join(args)
     logging.debug(command)
 
-    (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
-    if rc != 0:
-        logging.warning('Getting user "%s" failed, return code=%s:\n%s\n%s' %
-             (e.pw_name, rc, command, stdout, stderr))
+    (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
+    if rc == 0:
+        logging.debug('user_exists(%s): found"' % e.pw_name)
+    if rc == 2:
+        logging.debug('user_exists(%s): not found' % e.pw_name)
     else:
-        logging.debug('Found user %s"' % e.pw_name)
+        logging.warning(
+            'Getting user "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
+                e.pw_name, rc, command, stdout, stderr))
     return rc == 0
 
 
@@ -130,56 +135,78 @@ def user_valid(e):
     return True
 
 
+def add_user(e):
+        #raise SystemExit("Not user_valid, exiting")
+    (firstname, lastname, building, office, home, other) = extract_gecos(e)
+
+    uid = e.pw_uid + UID_OFFSET
+    gid = e.pw_gid + UID_OFFSET
+    shadow = spwd.getspnam(e.pw_name)
+    crypt = "{crypt}%s" % shadow.sp_pwd
+
+    args = ['/usr/bin/ipa', 'user-add',
+            '--first', firstname,
+            '--last', lastname,
+            '--homedir', e.pw_dir,
+            '--shell', e.pw_shell, 
+            '--setattr', 'userpassword=%s' % crypt,
+            '--setattr', 'uidnumber=%d' % uid,
+            '--setattr', 'gidnumber=%d' % gid,
+            e.pw_name]
+
+    command = " ".join(args)
+    logging.debug(command)
+
+    (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
+    if rc != 0:
+        logging.warning(
+            'Adding user "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
+                e.pw_name, rc, command, stdout, stderr))
+    else:
+        logging.info('Successfully added user "%s"' % e.pw_name)
+
+
+def del_user(e):
+
+    args = ['/usr/bin/ipa', 'user-del',
+            '--no-preserve',
+            e.pw_name]
+
+    command = " ".join(args)
+    logging.debug(command)
+
+    (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
+    if rc != 0:
+        logging.warning(
+            'Deleting user "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
+                e.pw_name, rc, command, stdout, stderr))
+    else:
+        logging.info('Successfully deleted user "%s"' % e.pw_name)
+
+
 def add_users():
     entries = pwd.getpwall()
     for e in entries:
         if not user_valid(e):
             continue
         if user_exists(e):
-            verb = 'user-mod'
-        else:
-            verb = 'user-add'
-	
-            #raise SystemExit("Not user_valid, exiting")
-        (firstname, lastname, building, office, home, other) = extract_gecos(e)
-
-        uid = e.pw_uid + UID_OFFSET
-        gid = e.pw_gid + UID_OFFSET
-        shadow = spwd.getspnam(e.pw_name)
-        crypt = "{crypt}%s" % shadow.sp_pwd
-
-        args = ['/usr/bin/ipa', verb,
-                '--first', firstname,
-                '--last', lastname,
-                '--homedir', e.pw_dir,
-                '--shell', e.pw_shell, 
-                '--setattr', 'userpassword=%s' % crypt,
-                '--setattr', 'uidnumber=%d' % uid,
-                '--setattr', 'gidnumber=%d' % gid,
-                e.pw_name]
-
-        command = " ".join(args)
-        logging.debug(command)
-
-        (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
-        if rc != 0:
-            logging.warning('Adding user "%s" failed, return code=%s:\n%s\n%s\n%s' %
-                 (e.pw_name, rc, command, stdout, stderr))
-        else:
-            logging.info('Successfully added user "%s"' % e.pw_name)
-
+            del_user(e)
+        add_user(e)
 
 def group_exists(e):
     args = ['/usr/bin/ipa', 'group-show', e.gr_name]
 
     logging.debug(" ".join(args))
 
-    (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
-    if rc != 0:
-        logging.warning('Getting group "%s" failed, return code=%s:\n%s\n%s' %
-             (e.gr_name, rc, stdout, stderr))
+    (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
+    if rc == 0:
+        logging.debug('group_exists(%s): found' % e.gr_name)
+    if rc == 2:
+        logging.debug('group_exists(%s): not found' % e.gr_name)
     else:
-        logging.debug('Found group %s"' % e.gr_name)
+        logging.warning(
+            'Getting user group "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
+                e.pw_name, rc, command, stdout, stderr))
     return rc == 0
 
 
@@ -215,10 +242,11 @@ def group_add_member(group, members):
         command = " ".join(args)
         logging.debug(command)
 
-        (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
+        (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
         if rc != 0:
-            logging.warning('Adding group "%s" member "%s" failed (return code=%s:\n%s\n%s\n%s' % 
-                 (group, member, rc, command, stdout, stderr))
+            logging.warning(
+                'Adding user group "{0}" member "{1}" failed, return code={2}:\n{3}\n{4}\n{5}'.format(
+                 group, member, rc, command, stdout, stderr))
         else:
             logging.info('Successfully added group "%s" member "%s"' %
                  (group, member))
@@ -230,7 +258,7 @@ def remove_group(e):
     command = " ".join(args)
     logging.debug(command)
 
-    (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
+    (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
     #(stdout, stderr, rc) = [0,0,0]
     if rc != 0:
         logging.warning('Removing group "%s" failed (return code=%s:\n%s\n%s\n%s' % 
@@ -258,11 +286,12 @@ def add_groups():
         command = " ".join(args)
         logging.info(command)
 
-        (stdout, stderr, rc) = run(args, raiseonerr=False, capture_output=True, capture_error=True)
+        (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
         #(stdout, stderr, rc) = [0,0,0]
         if rc != 0:
-            logging.warning('Adding group "%s" failed (return code=%s:\n%s\n%s\n%s' % 
-                 (e.gr_name, rc, command, stdout, stderr))
+            logging.warning(
+                'Adding group "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
+                    e.gr_name, rc, command, stdout, stderr))
         else:
             logging.info('Successfully added group "%s"' % e.gr_name)
 

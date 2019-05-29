@@ -75,10 +75,10 @@ ssh "$dest" /bin/bash <<EOF
 
 set -euo pipefail
 
-function finish() {
+# Thanks http://redsymbol.net/articles/bash-exit-traps/
+finish() {
     retcode=\$?
     cd /
-    cd $remote_dir
     tar xvfz "/root/$filename"
     rm -rf "$remote_dir"
     ipa config-mod --enable-migration=FALSE
@@ -92,7 +92,6 @@ ls -la "$remote_dir"
 cd "$remote_dir"
 tar xvf "$filename"
 ls -lR "$remote_dir"
-cd "$remote_dir"
 bash ./authfiles-backup.sh
 tar xvf "$filename"
 for auth in passwd group shadow; do
