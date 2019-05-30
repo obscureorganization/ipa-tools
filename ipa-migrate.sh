@@ -15,9 +15,6 @@ DEBUG=${DEBUG:-false}
 # Thanks https://stackoverflow.com/a/246128
 DIR=$(dirname "$(readlink -f "$0")")
 
-# Thanks https://stackoverflow.com/a/17805088
-$DEBUG && export PS4='${LINENO}: '
-$DEBUG && set -x
 
 # Thanks https://stackoverflow.com/a/16496491
 function usage {
@@ -25,15 +22,24 @@ function usage {
 }
 
 sudo=''
+limit=''
+verbose=''
 
 set +u
-while getopts "hs" args; do
-    case "$args" in
+while getopts ":hl:sv" args; do
+    case "${args}" in
         h)
             usage
             ;;
+        l)
+            limit="-l $OPTARG"
+            ;;
         s)
             sudo='sudo'
+            ;;
+        v)
+            DEBUG='true'
+            verbose='-v'
             ;;
         *)
             usage
@@ -44,6 +50,12 @@ done
 shift $((OPTIND-1))
 
 set -u
+
+# Thanks https://stackoverflow.com/a/17805088
+$DEBUG && export PS4='${LINENO}: '
+$DEBUG && set -x
+
+$DEBUG && echo "args: limit $limit / sudo $sudo / verbose $verbose"
 
 dest=${1-}
 if [[ -z "$dest" ]]; then
@@ -98,6 +110,7 @@ tar xvf "$filename"
 for auth in passwd group shadow; do
     cat "etc/\$auth" >> "/etc/\$auth"
 done
-python ./ipa-import-passwd.py
+set -x
+python ./ipa-import-passwd.py $limit $verbose
 EOF
 

@@ -12,11 +12,12 @@
 #
 # MIT Licensed, see the LICENSE file for details.
 
+import argparse
 import pwd
-import sys
 import grp
-import spwd
 import logging
+import spwd
+import sys
 from ipapython.ipautil import run
 
 # Thanks https://stackoverflow.com/a/34911547
@@ -135,12 +136,12 @@ def user_valid(e):
     return True
 
 
-def add_user(e):
+def add_user(e, args):
         #raise SystemExit("Not user_valid, exiting")
     (firstname, lastname, building, office, home, other) = extract_gecos(e)
 
-    uid = e.pw_uid + UID_OFFSET
-    gid = e.pw_gid + UID_OFFSET
+    uid = e.pw_uid + args.uidoffset
+    gid = e.pw_gid + args.uidoffset
     shadow = spwd.getspnam(e.pw_name)
     crypt = "{crypt}%s" % shadow.sp_pwd
 
@@ -184,14 +185,19 @@ def del_user(e):
         logging.info('Successfully deleted user "%s"' % e.pw_name)
 
 
-def add_users():
+def add_users(args):
     entries = pwd.getpwall()
+    count = 0
     for e in entries:
         if not user_valid(e):
             continue
+        count += 1
+        if args.limit and count > args.limit:
+            continue
         if user_exists(e):
             del_user(e)
-        add_user(e)
+        add_user(e, args)
+
 
 def group_exists(e):
     args = ['/usr/bin/ipa', 'group-show', e.gr_name]
@@ -234,6 +240,9 @@ def group_add_member(group, members):
     #member_list = ",".join(members)
 
     for member in members:
+        if member not in users_seen:
+            continue
+
         args = ['/usr/bin/ipa',
                 'group-add-member',
                 '--users=%s' % member,
@@ -251,6 +260,7 @@ def group_add_member(group, members):
             logging.info('Successfully added group "%s" member "%s"' %
                  (group, member))
 
+
 def remove_group(e):
     logging.info("About to delete group %s" % e.gr_name)
     args = ['/usr/bin/ipa', 'group-del', e.gr_name]
@@ -267,45 +277,68 @@ def remove_group(e):
         logging.info('Successfully removed group "%s"' % e.gr_name)
 
 
-def add_groups():
+def add_group(e, users, args):
+    #raise SystemExit("Group is not valid, exiting")
+    gid = e.gr_gid + args.uidoffset + args.gidoffset
+
+    args = ['/usr/bin/ipa', 'group-add',
+            '--gid', str(gid),
+            e.gr_name]
+
+    command = " ".join(args)
+    logging.info(command)
+
+    (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
+    #(stdout, stderr, rc) = [0,0,0]
+    if rc != 0:
+        logging.warning(
+            'Adding group "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
+                e.gr_name, rc, command, stdout, stderr))
+    else:
+        logging.info('Successfully added group "%s"' % e.gr_name)
+
+    members = [member for member in e.gr_mem
+               if member not in GROUP_MEMBER_BLACKLIST
+               and member in users]
+    if (len(members) > 0):
+        group_add_member(e.gr_name, members)
+
+
+def add_groups(args):
     users = [user.pw_name for user in pwd.getpwall()]
     entries = grp.getgrall()
+    count = 0
     for e in entries:
         logging.info('Processing group %s' % e.gr_name)
         if not group_valid(e):
             continue
+        count += 1
+        if args.limit and count > args.limit:
+            continue
         if group_exists(e):
             remove_group(e)
-        #raise SystemExit("Group is not valid, exiting")
-        gid = e.gr_gid + UID_OFFSET + GID_OFFSET
-
-        args = ['/usr/bin/ipa', 'group-add',
-                '--gid', str(gid),
-                e.gr_name]
-
-        command = " ".join(args)
-        logging.info(command)
-
-        (stdout, stderr, rc) = run(args, raiseonerr=RAISE_ON_ERR, capture_output=True, capture_error=True)
-        #(stdout, stderr, rc) = [0,0,0]
-        if rc != 0:
-            logging.warning(
-                'Adding group "{0}" failed, return code={1}:\n{2}\n{3}\n{4}'.format(
-                    e.gr_name, rc, command, stdout, stderr))
-        else:
-            logging.info('Successfully added group "%s"' % e.gr_name)
-
-        members = [member for member in e.gr_mem
-                   if member not in GROUP_MEMBER_BLACKLIST
-                   and member in users]
-        if (len(members) > 0):
-            group_add_member(e.gr_name, members)
+        add_group(e, users, args)
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
-    add_users()
-    add_groups()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-u', '--uidoffset', type=int, default=UID_OFFSET,
+                        help='UID offset to add to existing UIDs')
+    parser.add_argument('-g', '--gidoffset', type=int, default=GID_OFFSET,
+                        help='GID offset to add to existing GIDs')
+    parser.add_argument('-l', '--limit', type=int, default=0,
+                        help='Limit number of users and groups processed')
+    parser.add_argument('-v', '--verbose', help='increase output verbosity',
+                        action='store_true')
+    args = parser.parse_args()
+    if args.verbose:
+        loglevel = logging.DEBUG
+    else:
+        loglevel = logging.INFO
+    logging.basicConfig(level=loglevel)
+    add_users(args)
+    add_groups(args)
+
 
 if __name__ == '__main__':
     main()
