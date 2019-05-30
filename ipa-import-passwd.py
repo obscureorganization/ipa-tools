@@ -165,6 +165,7 @@ def add_user(e, args):
                 e.pw_name, rc, command, stdout, stderr))
     else:
         logging.info('Successfully added user "%s"' % e.pw_name)
+    users_seen.add(e.pw_name)
 
 
 def del_user(e):
