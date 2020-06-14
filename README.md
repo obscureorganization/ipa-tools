@@ -36,6 +36,8 @@ Run this script on the host that has the authentication files you wish to migrat
 # Acknowledgements
 Many thanks go to Robert Crittenden <rcritten@redhat.com> (@rcritten) who both wrote the original script that `ipa-import-users.py` was based on and gave permission to extend and re-publish that work under the [MIT License](LICENSE).
 
+Thanks to Scott Hanselman for the [suggestion and instructions on switching the git default branch from master to main](https://www.hanselman.com/blog/EasilyRenameYourGitDefaultBranchFromMasterToMain.aspx). This repository transitioned to using `main` as its branch on 2020-06-14.
+
 # Legal
 Copyright (C) 2010 Red Hat, Inc.
 
